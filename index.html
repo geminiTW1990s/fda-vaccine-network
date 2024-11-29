@@ -76,7 +76,7 @@
         </div> 
         <script>
             // Get the div element by its ID
-            const showBox = document.getElementById('showbox');
+            //const showBox = document.getElementById('showbox');
             
             // number of random nodes (gets crowded at >25 unless you change node diameter)
             var num = 0;
@@ -176,12 +176,12 @@
                 .on("mouseenter", function(d) {
                     const h1Element = document.createElement('h1');
                     h1Element.textContent = 'Taiwan FDA-approved Vaccine Products';
-                    showBox.innerHTML = '';
-                    showBox.appendChild(h1Element);
+                    //showBox.innerHTML = '';
+                    //showBox.appendChild(h1Element);
 
                     const h2Element = document.createElement('h2');
                     h2Element.textContent = company_names[d.id];
-                    showBox.appendChild(h2Element);
+                    //showBox.appendChild(h2Element);
                     
                     const ulElement = document.createElement('ul');
                     company_vaccines[company_names[d.id]].forEach(item => {
@@ -189,7 +189,7 @@
                         liElement.innerHTML = item['name_chinese'] + '<br><span style="color: darkred; font-weight: bold;">' + item['name_english'] + '</span></br>';
                         ulElement.appendChild(liElement);
                     });
-                    showBox.appendChild(ulElement);
+                    //showBox.appendChild(ulElement);
 
                     is_connected(d, 0.1, lines)
                     node.transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount); })
@@ -256,12 +256,12 @@
                         .on("mouseenter", function(d) {
                             const h1Element = document.createElement('h1');
                             h1Element.textContent = 'Taiwan FDA-approved Vaccine Products';
-                            showBox.innerHTML = '';
-                            showBox.appendChild(h1Element);
+                            //showBox.innerHTML = '';
+                            //showBox.appendChild(h1Element);
 
                             const h2Element = document.createElement('h2');
                             h2Element.textContent = company_names[d.id];
-                            showBox.appendChild(h2Element);
+                            //showBox.appendChild(h2Element);
                             
                             const ulElement = document.createElement('ul');
                             company_vaccines[company_names[d.id]].forEach(item => {
@@ -269,7 +269,7 @@
                                 liElement.innerHTML = item['name_chinese'] + '<br><span style="color: darkred; font-weight: bold;">' + item['name_english'] + '</span></br>';
                                 ulElement.appendChild(liElement);
                             });
-                            showBox.appendChild(ulElement);
+                            //showBox.appendChild(ulElement);
 
                             is_connected(d, 0.1, lines);
                             d3.select(this).transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount) + 5; });
@@ -377,12 +377,12 @@
                         .on("mouseenter", function(d) {
                             const h1Element = document.createElement('h1');
                             h1Element.textContent = 'Taiwan FDA-approved Vaccine Products';
-                            showBox.innerHTML = '';
-                            showBox.appendChild(h1Element);
+                            //showBox.innerHTML = '';
+                            //showBox.appendChild(h1Element);
 
                             const h2Element = document.createElement('h2');
                             h2Element.textContent = company_names[d.id];
-                            showBox.appendChild(h2Element);
+                            //showBox.appendChild(h2Element);
                             
                             const ulElement = document.createElement('ul');
                             company_vaccines[company_names[d.id]].forEach(item => {
@@ -390,7 +390,7 @@
                                 liElement.innerHTML = item['name_chinese'] + '<br><span style="color: darkred; font-weight: bold;">' + item['name_english'] + '</span></br>';
                                 ulElement.appendChild(liElement);
                             });
-                            showBox.appendChild(ulElement);
+                            //showBox.appendChild(ulElement);
 
                             is_connected(d, 0.1, lines);
                             d3.select(this).transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount) + 5; });
@@ -491,12 +491,12 @@
                         .on("mouseenter", function(d) {
                             const h1Element = document.createElement('h1');
                             h1Element.textContent = 'Taiwan FDA-approved Vaccine Products';
-                            showBox.innerHTML = '';
-                            showBox.appendChild(h1Element);
+                            //showBox.innerHTML = '';
+                            //showBox.appendChild(h1Element);
 
                             const h2Element = document.createElement('h2');
                             h2Element.textContent = company_names[d.id];
-                            showBox.appendChild(h2Element);
+                            //showBox.appendChild(h2Element);
                             
                             const ulElement = document.createElement('ul');
                             company_vaccines[company_names[d.id]].forEach(item => {
@@ -504,7 +504,7 @@
                                 liElement.innerHTML = item['name_chinese'] + '<br><span style="color: darkred; font-weight: bold;">' + item['name_english'] + '</span></br>';
                                 ulElement.appendChild(liElement);
                             });
-                            showBox.appendChild(ulElement);
+                            //showBox.appendChild(ulElement);
 
                             is_connected(d, 0.1, lines);
                             d3.select(this).transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount) + 5; });
