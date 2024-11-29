@@ -1,0 +1,1036 @@
+<head>
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+      <meta charset="utf-8">
+      <title>Vaccine (藥品仿單查詢平台)</title>
+    
+      <style>
+            line.node-link, path.node-link {
+                fill: none;
+                stroke: grey;
+            }
+            circle.node {
+                fill: grey;
+                stroke: grey;
+                stroke-width: 2;
+            }
+            circle.node+text {
+                text-anchor: middle;
+            }
+            text {
+                font-family: sans-serif;
+                pointer-events: none;
+                fill: darkblue;
+            }
+            .node-label {
+                z-index: 100;  /* Higher value places the labels on top */
+            }
+            /* Container for both the plot and the content */
+            .container {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                height: 750px;
+            }
+            /* Container for both the plot and the content */
+            .container2 {
+                width: 100%;
+                height: 100px;
+                justify-content: center;
+                align-items: center;
+            }
+
+            /* Plot container */
+            .plot-container {
+                flex: 3;
+                padding: 100px;
+                height: 100%;
+                border-right: 2px solid #ccc;
+            }
+
+            /* Content container */
+            .showbox {
+                flex: 1;
+                padding: 10px;
+                height: 100%;
+                overflow-y: auto;
+            }
+
+            /* Add some basic styling to the plot */
+            svg {
+                width: 100%;
+                height: 100%;
+            }
+
+            h1 {
+                color: grey;  /* Set the text color to dark red */
+            }
+    
+      </style>
+    </head>
+    <body> 
+        <h2><span style="color: grey; font-weight: bold;">說明：當兩間公司針對同一類疾病發布疫苗產品時會建立一條連結, 參考資料來源(113/11/03更新)：台灣FDA藥品仿單查詢平台</span></h2>
+        <div class="container">
+            <!-- Plot container -->
+            <div class="plot-container" id="plot-container"></div>
+            <div class="showbox" id="showbox"></div>
+        </div> 
+        <script>
+            // Get the div element by its ID
+            const showBox = document.getElementById('showbox');
+            
+            // number of random nodes (gets crowded at >25 unless you change node diameter)
+            var num = 0;
+            var company_names = [];
+            var company_space = [120, 140, 160, 160, 200, 140, 240, 280, 140, 140];
+            var company_products = {};
+            var company_vaccines = {};
+
+            // returns random int between 0 and num
+            function getRandomInt() {return Math.floor(Math.random() * (num));}
+
+            // nodes returns a [list] of {id: 1, fixed:true}
+            var nodes = d3.range(num).map(function(d) { return {id: d, callCount: 1}; });
+
+            // links returns a [list] of {source: 0, target: 1} (values refer to indicies of nodes)
+            var links = d3.range(num).map(function(d) { return {source: getRandomInt(), target: getRandomInt(), callCount: 1}; });        
+
+            var width = 650,
+                height = 650;
+
+            var force = d3.layout.force()
+                .nodes(nodes)
+                .links(links)
+                .size([width, height]);
+
+            // evenly spaces nodes along arc
+            var circleCoord = function(node, index, num_nodes){
+                var circumference = circle.node().getTotalLength();
+                var pointAtLength = function(l){return circle.node().getPointAtLength(l)};
+                var sectionLength = (circumference)/num_nodes;
+                var position = sectionLength*index+sectionLength/2;
+                return pointAtLength(circumference-position)
+            }
+
+            // fades out lines that aren't connected to node d
+            var is_connected = function(d, opacity, current_lines) {
+                current_lines.transition().style("stroke-opacity", function(o) {
+                    return o.source === d || o.target === d ? 1 : opacity;
+                });
+            }
+
+            var svg = d3.select("#plot-container").append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+
+            // invisible circle for placing nodes
+            // it's actually two arcs so we can use the getPointAtLength() and getTotalLength() methods
+            var dim = width-80
+            var circle = svg.append("path")
+                .attr("d", "M 40, "+(dim/2+40)+" a "+dim/2+","+dim/2+" 0 1,0 "+dim+",0 a "+dim/2+","+dim/2+" 0 1,0 "+dim*-1+",0")
+                .style("fill", "#f5f5f5");
+
+            force.start();
+
+            // set coordinates for container nodes
+            nodes.forEach(function(n, i) {
+                var coord = circleCoord(n, i, nodes.length)
+                n.x = coord.x
+                n.y = coord.y
+            });
+
+            // ...or use this one for curved line links
+            var lines = svg.selectAll("path.node-link")
+                .data(links).enter().append("path")
+                .attr("class", "node-link")
+                .attr("d", function(d) {
+                    var dx = d.target.x - d.source.x,
+                        dy = d.target.y - d.source.y,
+                        dr = Math.sqrt(dx * dx + dy * dy);
+                    return "M" + 
+                        d.source.x + "," + 
+                        d.source.y + "A" + 
+                        dr + "," + dr + " 0 0,1 " + 
+                        d.target.x + "," + 
+                        d.target.y;
+                })
+                .style("stroke-width", function(d) {
+                    return Math.max(0.5, d.callCount *2); // Minimum width of 1
+                });
+
+            var gnodes = svg.selectAll('g.gnode')
+                .data(nodes).enter().append('g')
+                .attr("transform", function(d) {
+                    return "translate("+d.x+","+d.y+")"
+                })
+                .classed('gnode', true);
+
+            // Define a scaling function for the node radius
+            var radiusScale = d3.scale.linear()
+                .domain([1, 50])  // Input domain: from 1 to the maximum callCount
+                .range([15, 100]);  // Output range: minimum and maximum radius (adjust as needed)
+
+            var node = gnodes.append("circle")
+                .attr("r", function(d) { return radiusScale(d.callCount); })
+                .attr("class", "node")
+                .on("mouseenter", function(d) {
+                    const h1Element = document.createElement('h1');
+                    h1Element.textContent = 'Taiwan FDA-approved Vaccine Products';
+                    showBox.innerHTML = '';
+                    showBox.appendChild(h1Element);
+
+                    const h2Element = document.createElement('h2');
+                    h2Element.textContent = company_names[d.id];
+                    showBox.appendChild(h2Element);
+                    
+                    const ulElement = document.createElement('ul');
+                    company_vaccines[company_names[d.id]].forEach(item => {
+                        const liElement = document.createElement('li');
+                        liElement.innerHTML = item['name_chinese'] + '<br><span style="color: darkred; font-weight: bold;">' + item['name_english'] + '</span></br>';
+                        ulElement.appendChild(liElement);
+                    });
+                    showBox.appendChild(ulElement);
+
+                    is_connected(d, 0.1, lines)
+                    node.transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount); })
+                    d3.select(this).transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount) + 5; })
+                })
+                .on("mouseleave", function(d) {
+                    node.transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount); });
+                    is_connected(d, 1, lines);
+                });  
+
+            // Append labels to the nodes
+            gnodes.append("text")
+                .attr("x", function(d){
+                    return company_space[d.id];
+                })
+                .attr("y", 0)  // Place label slightly above the node
+                .attr("text-anchor", "middle")  // Center the text horizontally
+                .attr("class", "node-label")
+                .text(function(d) {
+                    return company_names[d.id];
+                })
+                .style("font-weight", "bold")
+                .style("font-size", "18px")
+                .style("font-family", "Arial, sans-serif");
+
+                function addNode(newId) {
+                    // Create a new node and add it to the nodes array
+                    var newNode = { id: newId, callCount: 1 }; 
+                    nodes.push(newNode);
+
+                    // Restart the force layout
+                    force.nodes(nodes).links(links).start();
+
+                    // Update positions of all nodes
+                    gnodes = svg.selectAll('g.gnode')
+                        .data(nodes, function(d) { return d.id; });
+
+                    // Enter selection for new nodes
+                    var gEnter = gnodes.enter().append('g')
+                        .attr("class", "gnode")
+                        .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+
+                    // Create circles for new nodes
+                    gEnter.append("circle")
+                        .attr("r", function(d) { return radiusScale(d.callCount); })
+                        .attr("class", "node");
+                    
+                    gEnter.append("text")
+                        .attr("x", function(d){
+                            return company_space[d.id];
+                        })
+                        .attr("y", 0)  // Place label slightly above the node
+                        .attr("text-anchor", "middle")  // Center the text horizontally
+                        .attr("class", "node-label")
+                        .text(function(d) {
+                            return company_names[d.id];
+                        })
+                        .style("font-weight", "bold")
+                        .style("font-size", "18px")
+                        .style("font-family", "Arial, sans-serif");
+
+                    // Add hover interactions
+                    gnodes.select("circle")
+                        .on("mouseenter", function(d) {
+                            const h1Element = document.createElement('h1');
+                            h1Element.textContent = 'Taiwan FDA-approved Vaccine Products';
+                            showBox.innerHTML = '';
+                            showBox.appendChild(h1Element);
+
+                            const h2Element = document.createElement('h2');
+                            h2Element.textContent = company_names[d.id];
+                            showBox.appendChild(h2Element);
+                            
+                            const ulElement = document.createElement('ul');
+                            company_vaccines[company_names[d.id]].forEach(item => {
+                                const liElement = document.createElement('li');
+                                liElement.innerHTML = item['name_chinese'] + '<br><span style="color: darkred; font-weight: bold;">' + item['name_english'] + '</span></br>';
+                                ulElement.appendChild(liElement);
+                            });
+                            showBox.appendChild(ulElement);
+
+                            is_connected(d, 0.1, lines);
+                            d3.select(this).transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount) + 5; });
+                        })
+                        .on("mouseleave", function(d) {
+                            is_connected(d, 1, lines);
+                            d3.select(this).transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount); });
+                        });
+
+                    // Update existing nodes
+                    gnodes.transition()
+                        .duration(500)
+                        .attr("transform", function(d) {
+                            var coord = circleCoord(d, nodes.indexOf(d), nodes.length);
+                            d.x = coord.x; 
+                            d.y = coord.y;
+                            return "translate(" + d.x + "," + d.y + ")";
+                        });
+
+                    // Update the links
+                    var lines = svg.selectAll("path.node-link")
+                        .data(links, function(d) {
+                            return d.source.id + "-" + d.target.id; // Unique key for links
+                        });
+
+                    // Enter selection for new links
+                    lines.enter().append("path")
+                        .attr("class", "node-link")
+                        .attr("d", function(d) {
+                            var dx = d.target.x - d.source.x,
+                                dy = d.target.y - d.source.y,
+                                dr = Math.sqrt(dx * dx + dy * dy);
+                            return "M" + d.source.x + "," + d.source.y + "A" + dr + "," + dr + " 0 0,1 " + d.target.x + "," + d.target.y;
+                        })
+                        .style("stroke-width", function(d) {
+                            return Math.max(0.5, d.callCount *2); // Minimum width of 1
+                        });
+
+                    // Transition existing links
+                    lines.attr("opacity", 0)
+                        .transition()
+                        .duration(500)
+                        .attr("d", function(d) {
+                            var dx = d.target.x - d.source.x,
+                                dy = d.target.y - d.source.y,
+                                dr = Math.sqrt(dx * dx + dy * dy);
+                            return "M" + d.source.x + "," + d.source.y + "A" + dr + "," + dr + " 0 0,1 " + d.target.x + "," + d.target.y;
+                        })
+                        .attr("opacity", 1);
+
+                    // Remove old links
+                    lines.exit().remove();
+                }
+                
+                function addLink(sourceId, targetId) {
+                    // Find source and target nodes by ID
+                    const sourceNode = nodes.find(node => node.id === sourceId);
+                    const targetNode = nodes.find(node => node.id === targetId);
+                    
+                    // Check if both nodes exist
+                    if (!sourceNode || !targetNode) {
+                        console.error("Source or Target node not found.");
+                        return;
+                    }
+
+                    // Create a new link
+                    const newLink = { source: sourceNode, target: targetNode, callCount: 1 };
+                    
+                    // Add the new link to the links array
+                    links.push(newLink);
+
+                    // Restart the force layout with the updated nodes and links
+                    force.nodes(nodes).links(links).start();
+
+                    // Update positions of all nodes
+                    gnodes = svg.selectAll('g.gnode')
+                        .data(nodes, function(d) { return d.id; });
+
+                    // Enter selection for new nodes
+                    var gEnter = gnodes.enter().append('g')
+                        .attr("class", "gnode")
+                        .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+
+                    // Create circles for new nodes
+                    gEnter.append("circle")
+                        .attr("r", function(d) { return radiusScale(d.callCount); })
+                        .attr("class", "node");
+                    
+                    gEnter.append("text")
+                        .attr("x", function(d){
+                            return company_space[d.id];
+                        })
+                        .attr("y", 0)  // Place label slightly above the node
+                        .attr("text-anchor", "middle")  // Center the text horizontally
+                        .attr("class", "node-label")
+                        .text(function(d) {
+                            return company_names[d.id];
+                        })
+                        .style("font-weight", "bold")
+                        .style("font-size", "18px")
+                        .style("font-family", "Arial, sans-serif");
+
+                    // Add hover interactions
+                    gnodes.select("circle")
+                        .on("mouseenter", function(d) {
+                            const h1Element = document.createElement('h1');
+                            h1Element.textContent = 'Taiwan FDA-approved Vaccine Products';
+                            showBox.innerHTML = '';
+                            showBox.appendChild(h1Element);
+
+                            const h2Element = document.createElement('h2');
+                            h2Element.textContent = company_names[d.id];
+                            showBox.appendChild(h2Element);
+                            
+                            const ulElement = document.createElement('ul');
+                            company_vaccines[company_names[d.id]].forEach(item => {
+                                const liElement = document.createElement('li');
+                                liElement.innerHTML = item['name_chinese'] + '<br><span style="color: darkred; font-weight: bold;">' + item['name_english'] + '</span></br>';
+                                ulElement.appendChild(liElement);
+                            });
+                            showBox.appendChild(ulElement);
+
+                            is_connected(d, 0.1, lines);
+                            d3.select(this).transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount) + 5; });
+                        })
+                        .on("mouseleave", function(d) {
+                            is_connected(d, 1, lines);
+                            d3.select(this).transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount); });
+                        });
+
+                    // Update existing nodes
+                    gnodes.transition()
+                        .duration(500)
+                        .attr("transform", function(d) {
+                            var coord = circleCoord(d, nodes.indexOf(d), nodes.length);
+                            d.x = coord.x; 
+                            d.y = coord.y;
+                            return "translate(" + d.x + "," + d.y + ")";
+                        });
+
+                    // Update the lines in the SVG
+                    var lines = svg.selectAll("path.node-link")
+                        .data(links, function(d) {
+                            return d.source.id + "-" + d.target.id; // Unique key for links
+                        });
+
+                    // Enter selection for new links
+                    lines.enter().append("path")
+                        .attr("class", "node-link")
+                        .attr("opacity", 0)
+                        .transition()
+                        .duration(500)
+                        .attr("d", function(d) {
+                            var dx = d.target.x - d.source.x,
+                                dy = d.target.y - d.source.y,
+                                dr = Math.sqrt(dx * dx + dy * dy);
+                            return "M" + d.source.x + "," + d.source.y + "A" + dr + "," + dr + " 0 0,1 " + d.target.x + "," + d.target.y;
+                        })
+                        .style("stroke-width", function(d) {
+                            return Math.max(0.5, d.callCount *2); // Minimum width of 1
+                        })
+                        .attr("opacity", 1);
+
+                    // Remove old links that are no longer valid
+                    lines.exit().remove();
+                }
+                
+                // Update callCount when the link is called (you'll need to define how to "call" the link)
+                function updateLink(sourceId, targetId) {
+                    // Find source and target nodes by ID
+                    const sourceNode = nodes.find(node => node.id === sourceId);
+                    const targetNode = nodes.find(node => node.id === targetId);
+                    
+                    // Check if both nodes exist
+                    if (!sourceNode || !targetNode) {
+                        console.error("Source or Target node not found.");
+                        return;
+                    }
+
+                    nodes.find(node => node.id === sourceId).callCount++;
+                    nodes.find(node => node.id === targetId).callCount++;
+                    
+                    links.find(lnk => ((lnk.source.id === sourceId) && (lnk.target.id === targetId)) || ((lnk.source.id === targetId) && (lnk.target.id === sourceId))).callCount++; // Increment the callCount
+
+                    // Restart the force layout with the updated nodes and links
+                    force.nodes(nodes).links(links).start();
+
+                    // Update positions of all nodes
+                    gnodes = svg.selectAll('g.gnode')
+                        .data(nodes, function(d) { return d.id; });
+
+                    // Enter selection for new nodes
+                    var gEnter = gnodes.enter().append('g')
+                        .attr("class", "gnode")
+                        .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+
+                    // Create circles for new nodes
+                    gEnter.append("circle")
+                        .attr("r", function(d) { return radiusScale(d.callCount); })
+                        .attr("class", "node");
+                    
+                    gEnter.append("text")
+                        .attr("x", function(d){
+                            return company_space[d.id];
+                        })
+                        .attr("y", 0)  // Place label slightly above the node
+                        .attr("text-anchor", "middle")  // Center the text horizontally
+                        .attr("class", "node-label")
+                        .text(function(d) {
+                            return company_names[d.id];
+                        })
+                        .style("font-weight", "bold")
+                        .style("font-size", "18px")
+                        .style("font-family", "Arial, sans-serif");
+
+                    // Add hover interactions
+                    gnodes.select("circle")
+                        .attr("r", function(d) { return radiusScale(d.callCount); })
+                        .on("mouseenter", function(d) {
+                            const h1Element = document.createElement('h1');
+                            h1Element.textContent = 'Taiwan FDA-approved Vaccine Products';
+                            showBox.innerHTML = '';
+                            showBox.appendChild(h1Element);
+
+                            const h2Element = document.createElement('h2');
+                            h2Element.textContent = company_names[d.id];
+                            showBox.appendChild(h2Element);
+                            
+                            const ulElement = document.createElement('ul');
+                            company_vaccines[company_names[d.id]].forEach(item => {
+                                const liElement = document.createElement('li');
+                                liElement.innerHTML = item['name_chinese'] + '<br><span style="color: darkred; font-weight: bold;">' + item['name_english'] + '</span></br>';
+                                ulElement.appendChild(liElement);
+                            });
+                            showBox.appendChild(ulElement);
+
+                            is_connected(d, 0.1, lines);
+                            d3.select(this).transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount) + 5; });
+                        })
+                        .on("mouseleave", function(d) {
+                            is_connected(d, 1, lines);
+                            d3.select(this).transition().duration(100).attr("r", function(d) { return radiusScale(d.callCount); });
+                        });
+
+                    // Update existing nodes
+                    gnodes.transition()
+                        .duration(500)
+                        .attr("transform", function(d) {
+                            var coord = circleCoord(d, nodes.indexOf(d), nodes.length);
+                            d.x = coord.x; 
+                            d.y = coord.y;
+                            return "translate(" + d.x + "," + d.y + ")";
+                        });
+
+                    // Update the lines in the SVG
+                    var lines = svg.selectAll("path.node-link")
+                        .data(links, function(d) {
+                            return d.source.id + "-" + d.target.id; // Unique key for links
+                        });
+
+                    // Enter selection for new links
+                    lines.enter().append("path")
+                        .attr("class", "node-link")
+                        .attr("opacity", 0)
+                        .transition()
+                        .duration(500)
+                        .attr("d", function(d) {
+                            var dx = d.target.x - d.source.x,
+                                dy = d.target.y - d.source.y,
+                                dr = Math.sqrt(dx * dx + dy * dy);
+                            return "M" + d.source.x + "," + d.source.y + "A" + dr + "," + dr + " 0 0,1 " + d.target.x + "," + d.target.y;
+                        })
+                        .attr("opacity", 1);
+                    
+                        lines.style("stroke-width", function(d) {
+                            return Math.max(0.5, d.callCount *2); // Minimum width of 1
+                        });
+
+                    // Remove old links that are no longer valid
+                    lines.exit().remove();
+                }
+
+                function insertNewlinesEvery5Chars(str) {
+                    // Create an array that will hold chunks of 5 characters
+                    var chunks = [];
+                    
+                    // Loop through the string and slice it into chunks of 5 characters
+                    for (var i = 0; i < str.length; i += 5) {
+                        chunks.push(str.slice(i, i + 5));  // Slice 5 characters at a time
+                    }
+                    
+                    // Join the chunks with newline characters (\n)
+                    return chunks.join("\n");
+                }
+            
+            function nodeExists(id) {
+                return nodes.some(function(nod) {
+                    // Check if the source and target match the given IDs, regardless of order
+                    return (nod.id === id);
+                });
+            }
+            
+                function linkExists(id1, id2) {
+                    return links.some(function(link) {
+                        // Check if the source and target match the given IDs, regardless of order
+                        return (link.source.id === id1 && link.target.id === id2) || 
+                            (link.source.id === id2 && link.target.id === id1);
+                    });
+                }
+            
+            function renderNetwork(cur_index){
+
+                var data_total = {
+                    "companies_by_disease": {
+                        "Influenza": [
+                            "賽諾菲股份有限公司",
+                            "國光生物科技股份有限公司",
+                            "台灣東洋藥品工業股份有限公司",
+                            "高端疫苗生物製劑股份有限公司"
+                        ],
+                        "Hepatitis B": [
+                            "賽諾菲股份有限公司",
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司"
+                        ],
+                        "Diphtheria": [
+                            "賽諾菲股份有限公司",
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司"
+                        ],
+                        "Tetanus": [
+                            "賽諾菲股份有限公司",
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司",
+                            "喜美德生醫科技股份有限公司"
+                        ],
+                        "Pertussis": [
+                            "賽諾菲股份有限公司",
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司"
+                        ],
+                        "Poliomyelitis": [
+                            "賽諾菲股份有限公司",
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司"
+                        ],
+                        "Haemophilus influenzae type b": [
+                            "賽諾菲股份有限公司",
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司"
+                        ],
+                        "Human papillomavirus (HPV)": [
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司",
+                            "美商默沙東藥廠股份有限公司台灣分公司"
+                        ],
+                        "Pneumococcal disease": [
+                            "美商惠氏藥廠（亞洲）股份有限公司台灣分公司",
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司",
+                            "美商默沙東藥廠股份有限公司台灣分公司"
+                        ],
+                        "Rotavirus": [
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司",
+                            "美商默沙東藥廠股份有限公司台灣分公司"
+                        ],
+                        "Meningococcal disease": [
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司"
+                        ],
+                        "Meningococcal disease (Group B)": [
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司"
+                        ],
+                        "Herpes Zoster/Shingles": [
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司",
+                            "美商默沙東藥廠股份有限公司台灣分公司"
+                        ],
+                        "Respiratory syncytial virus (RSV)": [
+                            "荷商葛蘭素史克藥廠股份有限公司臺灣分公司",
+                            "輝瑞大藥廠股份有限公司"
+                        ],
+                        "Measles": [
+                            "美商默沙東藥廠股份有限公司台灣分公司"
+                        ],
+                        "Mumps": [
+                            "美商默沙東藥廠股份有限公司台灣分公司"
+                        ],
+                        "Rubella": [
+                            "美商默沙東藥廠股份有限公司台灣分公司"
+                        ],
+                        "Chickenpox": [
+                            "美商默沙東藥廠股份有限公司台灣分公司",
+                            "台灣東洋藥品工業股份有限公司"
+                        ],
+                        "Hepatitis A": [
+                            "賽諾菲股份有限公司",
+                            "美商默沙東藥廠股份有限公司台灣分公司"
+                        ],
+                        "Rabies": [
+                            "賽諾菲股份有限公司"
+                        ],
+                        "Enterovirus 71": [
+                            "安特羅生物科技股份有限公司",
+                            "高端疫苗生物製劑股份有限公司"
+                        ],
+                        "Japanese encephalitis": [
+                            "裕利股份有限公司"
+                        ],
+                        "COVID-19": [
+                            "莫德納台灣股份有限公司"
+                        ]
+                    },
+                    "vaccines_by_company": {
+                    "國光生物科技股份有限公司": [
+                        {
+                        "name_chinese": "\"安定伏\" 裂解型流感疫苗",
+                        "name_english": "AdimFlu-S",
+                        "disease": ["Influenza"]
+                        },
+                        {
+                        "name_chinese": "\"安定伏\"裂解型四價流感疫苗",
+                        "name_english": "AdimFlu-S (QIS)",
+                        "disease": ["Influenza"]
+                        }
+                    ],
+                    "荷商葛蘭素史克藥廠股份有限公司臺灣分公司": [
+                        {
+                        "name_chinese": "安在時Ｂ型肝炎疫苗",
+                        "name_english": "ENGERIX -B",
+                        "disease": ["Hepatitis B"]
+                        },
+                        {
+                        "name_chinese": "嬰護寧五合一疫苗(白喉\\破傷風\\無細胞性百日咳\\去活性小兒麻痹\\b型流行性感冒嗜血桿菌混合疫苗)",
+                        "name_english": "INFANRIX-IPV + HIB",
+                        "disease": [
+                            "Diphtheria", 
+                            "Tetanus", 
+                            "Pertussis", 
+                            "Poliomyelitis", 
+                            "Haemophilus influenzae type b"
+                        ]
+                        },
+                        {
+                        "name_chinese": "嬰護寧安痺威疫苗(白喉/破傷風/非細胞性百日咳與去活化小兒麻痺混合疫苗)",
+                        "name_english": "INFANRIX-IPV",
+                        "disease": [
+                            "Diphtheria", 
+                            "Tetanus", 
+                            "Pertussis", 
+                            "Poliomyelitis"
+                        ]
+                        },
+                        {
+                        "name_chinese": "補施追疫苗",
+                        "name_english": "BOOSTRIX",
+                        "disease": [
+                            "Diphtheria", 
+                            "Tetanus", 
+                            "Pertussis"
+                        ]
+                        },
+                        {
+                        "name_chinese": "嬰護寧六合一疫苗",
+                        "name_english": "INFANRIX HEXA",
+                        "disease": [
+                            "Diphtheria", 
+                            "Tetanus", 
+                            "Pertussis", 
+                            "Poliomyelitis", 
+                            "Hepatitis B", 
+                            "Haemophilus influenzae type b"
+                        ]
+                        },
+                        {
+                        "name_chinese": "補施追安痺威疫苗",
+                        "name_english": "boostrixTM polio",
+                        "disease": [
+                            "Diphtheria", 
+                            "Tetanus", 
+                            "Pertussis", 
+                            "Poliomyelitis"
+                        ]
+                        },
+                        {
+                        "name_chinese": "保蓓TM人類乳突病毒第16/18型疫苗",
+                        "name_english": "Cervarix TM Human Papillomavirus vaccine Type 16 and 18 (Recombinant, AS04 adjuvanted)",
+                        "disease": ["Human papillomavirus (HPV)"]
+                        },
+                        {
+                        "name_chinese": "雙伏威肺炎鏈球菌十價接合型疫苗",
+                        "name_english": "SynflorixTM",
+                        "disease": ["Pneumococcal disease"]
+                        },
+                        {
+                        "name_chinese": "羅特律輪狀病毒疫苗口服懸液劑",
+                        "name_english": "Rotarix Oral Suspension",
+                        "disease": ["Rotavirus"]
+                        },
+                        {
+                        "name_chinese": "腦寧安 腦膜炎雙球菌四價接合型疫苗",
+                        "name_english": "Menveo Meningococcal Group A, C, W-135 and Y conjugate vaccine",
+                        "disease": ["Meningococcal disease"]
+                        },
+                        {
+                        "name_chinese": "必思諾B型腦膜炎雙球菌疫苗",
+                        "name_english": "Bexsero Meningococcal Group B Vaccine",
+                        "disease": ["Meningococcal disease (Group B)"]
+                        },
+                        {
+                        "name_chinese": "欣剋疹帶狀疱疹疫苗",
+                        "name_english": "Shingrix Herpes Zoster Vaccine",
+                        "disease": ["Herpes Zoster/Shingles"]
+                        },
+                        {
+                        "name_chinese": "欣剋融呼吸道融合病毒疫苗",
+                        "name_english": "Arexvy Respiratory Syncytial Virus Vaccine",
+                        "disease": ["Respiratory syncytial virus (RSV)"]
+                        }
+                    ],
+                    "美商默沙東藥廠股份有限公司台灣分公司": [
+                        {
+                        "name_chinese": "麻疹、腮腺炎及德國麻疹三種混合疫苗注射劑",
+                        "name_english": "M-M-R II (MEASLES, MUMPS AND RUBELLA VIRUS VACCINE, LIVE)",
+                        "disease": [
+                            "Measles", 
+                            "Mumps", 
+                            "Rubella"
+                        ]
+                        },
+                        {
+                        "name_chinese": "伏痘敏\t活性水痘疫苗",
+                        "name_english": "VARIVAX -VARICELLA VIRUS VACCINE",
+                        "disease": ["Chickenpox"]
+                        },
+                        {
+                        "name_chinese": "紐蒙肺多價性肺炎鏈球菌疫苗",
+                        "name_english": "PNEUMOVAX 23 (PNEUMOCOCCAL VACCINE POLYVALENT)",
+                        "disease": ["Pneumococcal disease"]
+                        },
+                        {
+                        "name_chinese": "\"唯德\" 不活化Ａ型肝炎疫苗",
+                        "name_english": "VAQTA (HEPATITIS A VACCINE, INACTIVATED)",
+                        "disease": ["Hepatitis A"]
+                        },
+                        {
+                        "name_chinese": "輪達停口服活性五價輪狀病毒疫苗",
+                        "name_english": "RotaTeq (Rotavirus vaccine, live, oral, pentavalent)",
+                        "disease": ["Rotavirus"]
+                        },
+                        {
+                        "name_chinese": "嘉喜[四價人類乳突病毒(第6,11,16,18型)基因重組疫苗]",
+                        "name_english": "GARDASIL [Quadrivalent Human Papillomavirus (Types 6,11,16,18) Recombinant Vaccine]",
+                        "disease": ["Human papillomavirus (HPV)"]
+                        },
+                        {
+                        "name_chinese": "伏帶疹 活性帶狀疱疹疫苗",
+                        "name_english": "ZOSTAVAX [zoster virus vaccine live (Oka/Merck)]",
+                        "disease": ["Herpes Zoster/Shingles"]
+                        },
+                        {
+                        "name_chinese": "普康 麻疹、腮腺炎、德國麻疹及水痘病毒活毒疫苗(冷藏安定配方)",
+                        "name_english": "ProQuad® [Measles, Mumps, Rubella and Varicella (Oka/Merck) Virus Vaccine Live](Refrigerator Stable formulation)",
+                        "disease": [
+                            "Measles", 
+                            "Mumps", 
+                            "Rubella", 
+                            "Chickenpox"
+                        ]
+                        },
+                        {
+                        "name_chinese": "嘉喜 [九價人類乳突病毒(第6, 11, 16, 18, 31, 33, 45, 52, 58型)基因重組疫苗]",
+                        "name_english": "Gardasil 9 [Human Papillomavirus 9-valent Vaccine, Recombinant]",
+                        "disease": ["Human papillomavirus (HPV)"]
+                        },
+                        {
+                        "name_chinese": "肺恩賜 肺炎鏈球菌十五價結合型疫苗 滅菌懸液注射劑",
+                        "name_english": "VAXNEUVANCE Suspension for Injection",
+                        "disease": ["Pneumococcal disease"]
+                        }
+                    ],
+                    "賽諾菲股份有限公司": [
+                        {
+                        "name_chinese": "疫伏麻小兒麻痺注射疫苗",
+                        "name_english": "IMOVAX POLIO",
+                        "disease": ["Poliomyelitis"]
+                        },
+                        {
+                        "name_chinese": "安打星三合一補追疫苗",
+                        "name_english": "Adacel TM",
+                        "disease": ["Diphtheria", "Tetanus", "Pertussis"]
+                        },
+                        {
+                        "name_chinese": "菲諾犬狂犬病疫苗",
+                        "name_english": "VERORAB powder and solvent for suspension for injection",
+                        "disease": ["Rabies"]
+                        },
+                        {
+                        "name_chinese": "潘多星五合一疫苗",
+                        "name_english": "Pentaxim",
+                        "disease": ["Diphtheria", "Tetanus", "Pertussis", "Poliomyelitis", "Haemophilus influenzae type b"]
+                        },
+                        {
+                        "name_chinese": "安唯心A型肝炎疫苗(兒童用)",
+                        "name_english": "Avaxim 80U Pediatric",
+                        "disease": ["Hepatitis A"]
+                        },
+                        {
+                        "name_chinese": "泰多星四合一疫苗",
+                        "name_english": "Tetraxim suspension for injection",
+                        "disease": ["Diphtheria", "Tetanus", "Pertussis", "Poliomyelitis"]
+                        },
+                        {
+                        "name_chinese": "菲流達四價流感疫苗",
+                        "name_english": "VaxigripTetra",
+                        "disease": ["Influenza"]
+                        },
+                        {
+                        "name_chinese": "哈多星六合一疫苗",
+                        "name_english": "Hexaxim",
+                        "disease": ["Diphtheria", "Tetanus", "Pertussis", "Poliomyelitis", "Hepatitis B", "Haemophilus influenzae type b"]
+                        }
+                    ],
+                    "美商惠氏藥廠（亞洲）股份有限公司台灣分公司": [
+                        {
+                        "name_chinese": "沛兒肺炎鏈球菌十三價結合型疫苗",
+                        "name_english": "Prevenar 13, Pneumococcal 13-Valent Conjugate Vaccine",
+                        "disease": ["Pneumococcal disease"]
+                        }
+                    ],
+                    "安特羅生物科技股份有限公司": [
+                        {
+                        "name_chinese": "安拓伏腸病毒71型疫苗",
+                        "name_english": "EnVAX-A71",
+                        "disease": ["Enterovirus 71"]
+                        }
+                    ],
+                    "高端疫苗生物製劑股份有限公司": [
+                        {
+                        "name_chinese": "高端四價流感疫苗",
+                        "name_english": "MVC FLU Quadrivalent pre-filled syringe injection",
+                        "disease": ["Influenza"]
+                        },
+                        {
+                        "name_chinese": "恩穩健腸病毒71型疫苗",
+                        "name_english": "Envacgen",
+                        "disease": ["Enterovirus 71"]
+                        }
+                    ],
+                    "裕利股份有限公司": [
+                        {
+                        "name_chinese": "禦日腦細胞型日本腦炎活性減毒疫苗",
+                        "name_english": "Imojev",
+                        "disease": ["Japanese encephalitis"]
+                        }
+                    ],
+                    "台灣東洋藥品工業股份有限公司": [
+                        {
+                        "name_chinese": "輔流威適流感疫苗",
+                        "name_english": "FLUCELVAX QUAD",
+                        "disease": ["Influenza"]
+                        },
+                        {
+                        "name_chinese": "輔流安四價流感疫苗",
+                        "name_english": "FLUAD TETRA Suspension for Injection",
+                        "disease": ["Influenza"]
+                        },
+                        {
+                        "name_chinese": "歐克鬥乾燥活性減毒水痘疫苗",
+                        "name_english": "OkaBIK Varicella Vaccine",
+                        "disease": ["Chickenpox"]
+                        }
+                    ],
+                    "喜美德生醫科技股份有限公司": [
+                        {
+                        "name_chinese": "吸著破傷風類毒素疫苗0.5毫升",
+                        "name_english": "Tetanus Toxoid (Injectable, Suspension for injection) Adsorbed Tetanus Vaccine B.P. 0.5ml",
+                        "disease": ["Tetanus"]
+                        }
+                    ],
+                    "莫德納台灣股份有限公司": [
+                        {
+                        "name_chinese": "世冠飛適新型冠狀病毒疫苗",
+                        "name_english": "Spikevax Injection",
+                        "disease": ["COVID-19"]
+                        }
+                    ],
+                    "輝瑞大藥廠股份有限公司": [
+                        {
+                        "name_chinese": "艾沛兒呼吸道融合病毒疫苗",
+                        "name_english": "Abrysvo, Respiratory Syncytial Virus Vaccine, powder and solvent for solution for injection",
+                        "disease": ["Respiratory syncytial virus (RSV)"]
+                        }
+                    ]
+                    }
+                }; 
+
+                var data = data_total["companies_by_disease"];
+                        
+                var data_vaccine = data_total["vaccines_by_company"];
+                for (key in data_vaccine){
+                    if (data_vaccine.hasOwnProperty(key)) {
+                        company_vaccines[key] = data_vaccine[key];
+                    }
+                }
+                    
+                const c_index = cur_index % Object.keys(data).length;
+                const disease = Object.keys(data)[c_index];
+
+                const h1Element = document.createElement('h1');
+                h1Element.textContent = 'Taiwan FDA-approved Vaccine Products';
+
+                const h2Element = document.createElement('h2');
+                h2Element.textContent = disease;
+                        
+                const ulElement = document.createElement('ul');
+                data[disease].forEach(item => {
+                    const liElement = document.createElement('li');
+                    liElement.textContent = item;
+                    ulElement.appendChild(liElement);  // Append <li> to <ul>
+                });
+
+                showBox.innerHTML = '';
+                showBox.appendChild(h1Element);
+                showBox.appendChild(h2Element);
+                showBox.appendChild(ulElement);
+
+                if(data[disease].length>1){
+                    nodeId_ls = []; 
+                    data[disease].forEach(name => {
+                        if (!company_names.includes(name)) {
+                            company_names.push(name); 
+                            company_products[name] = [];
+                            company_products[name].push(disease);
+                        }else{
+                            company_products[name].push(disease);
+                        }
+                        if(!nodeExists(company_names.indexOf(name))){
+                            addNode(company_names.indexOf(name));
+                        }
+                        nodeId_ls.push({id: company_names.indexOf(name), callCount: 1});
+                    });
+
+                    for (let i = 0; i < nodeId_ls.length; i++) {
+                        for (let j = i + 1; j < nodeId_ls.length; j++) {
+                            if(!linkExists(nodeId_ls[i]['id'], nodeId_ls[j]['id'])){
+                                addLink(nodeId_ls[i]['id'], nodeId_ls[j]['id']);
+                            }else{
+                                updateLink(nodeId_ls[i]['id'], nodeId_ls[j]['id']);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Set up the update function to change the data and redraw the chart
+            let currentIndex = 0;
+            function update() {
+                renderNetwork(currentIndex);
+                currentIndex = currentIndex + 1;
+            }
+
+            let count = 0;
+            const intervalId = setInterval(() => {
+                update();  // Call the update function
+
+                count++;
+                if (count >= 23) {
+                    clearInterval(intervalId);  // Stop the interval after 100 executions
+                }
+            }, 1000);
+        </script>
+    </body>
+</html>
